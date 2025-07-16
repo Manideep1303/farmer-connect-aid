@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,7 +14,11 @@ import {
   Camera,
   Video,
   VolumeX,
-  AlertCircle
+  AlertCircle,
+  Upload,
+  Mic,
+  Image as ImageIcon,
+  X
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import adminDashboardImage from "@/assets/admin-dashboard.jpg";
@@ -30,14 +34,20 @@ interface FarmerRequest {
   responded: boolean;
   response?: string;
   responseTimestamp?: string;
+  responseMediaType?: "image" | "audio";
+  responseMediaUrl?: string;
 }
 
 const AdminDashboard = () => {
   const [requests, setRequests] = useState<FarmerRequest[]>([]);
   const [selectedRequest, setSelectedRequest] = useState<FarmerRequest | null>(null);
   const [response, setResponse] = useState("");
+  const [responseImage, setResponseImage] = useState<string | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [hasVoiceResponse, setHasVoiceResponse] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // Load sample farmer requests
@@ -85,15 +95,37 @@ const AdminDashboard = () => {
   };
 
   const handleSendResponse = () => {
-    if (!selectedRequest || !response.trim()) return;
+    if (!selectedRequest || (!response.trim() && !responseImage && !hasVoiceResponse)) {
+      toast({
+        title: "Empty Response",
+        description: "Please add a text response, image, or voice message",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    let responseContent = response;
+    let mediaType: "image" | "audio" | undefined;
+    let mediaUrl: string | undefined;
+
+    if (responseImage) {
+      responseContent = responseContent || "Image response attached";
+      mediaType = "image";
+      mediaUrl = responseImage;
+    } else if (hasVoiceResponse) {
+      responseContent = responseContent || "Voice response attached";
+      mediaType = "audio";
+    }
 
     const updatedRequests = requests.map(req =>
       req.id === selectedRequest.id
         ? {
             ...req,
             responded: true,
-            response: response,
+            response: responseContent,
             responseTimestamp: new Date().toLocaleString(),
+            responseMediaType: mediaType,
+            responseMediaUrl: mediaUrl,
           }
         : req
     );
@@ -102,14 +134,69 @@ const AdminDashboard = () => {
     setSelectedRequest({
       ...selectedRequest,
       responded: true,
-      response: response,
+      response: responseContent,
       responseTimestamp: new Date().toLocaleString(),
+      responseMediaType: mediaType,
+      responseMediaUrl: mediaUrl,
     });
+    
+    // Clear form
     setResponse("");
+    setResponseImage(null);
+    setHasVoiceResponse(false);
 
     toast({
       title: "Response sent successfully",
       description: "Your response has been sent to the farmer.",
+    });
+  };
+
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setResponseImage(e.target?.result as string);
+        toast({
+          title: "Image added",
+          description: "Image has been added to your response",
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleVoiceRecord = () => {
+    if (isRecording) {
+      setIsRecording(false);
+      setHasVoiceResponse(true);
+      toast({
+        title: "Voice message recorded",
+        description: "Voice message has been added to your response",
+      });
+    } else {
+      setIsRecording(true);
+      toast({
+        title: "Recording started",
+        description: "Speak your response clearly. Tap the microphone again to stop.",
+      });
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setResponseImage(null);
+    toast({
+      title: "Image removed",
+      description: "Image has been removed from your response",
+    });
+  };
+
+  const handleRemoveVoice = () => {
+    setHasVoiceResponse(false);
+    setIsRecording(false);
+    toast({
+      title: "Voice message removed",
+      description: "Voice message has been removed from your response",
     });
   };
 
@@ -286,26 +373,123 @@ const AdminDashboard = () => {
                       <span className="text-xs text-muted-foreground">
                         {selectedRequest.responseTimestamp}
                       </span>
+                      {selectedRequest.responseMediaType && (
+                        <Badge variant="outline" className="text-xs">
+                          {getMediaIcon(selectedRequest.responseMediaType)}
+                          <span className="ml-1">{selectedRequest.responseMediaType}</span>
+                        </Badge>
+                      )}
                     </div>
+                    
+                    {selectedRequest.responseMediaUrl && (
+                      <div className="mb-3">
+                        {selectedRequest.responseMediaType === "image" && (
+                          <img 
+                            src={selectedRequest.responseMediaUrl} 
+                            alt="Admin response" 
+                            className="max-w-full h-auto rounded-md"
+                          />
+                        )}
+                        {selectedRequest.responseMediaType === "audio" && (
+                          <div className="flex items-center gap-2 p-3 bg-white/50 rounded-md">
+                            <VolumeX className="w-5 h-5" />
+                            <span>Voice Response</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
                     <p>{selectedRequest.response}</p>
                   </div>
                 )}
 
                 {/* Response Form */}
                 {!selectedRequest.responded && (
-                  <div className="flex-1 flex flex-col space-y-3">
+                  <div className="flex-1 flex flex-col space-y-4">
                     <Separator />
+                    
+                    {/* Media Upload Section */}
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => imageInputRef.current?.click()}
+                        className="flex items-center gap-2"
+                      >
+                        <ImageIcon className="w-4 h-4" />
+                        Add Image
+                      </Button>
+                      
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleVoiceRecord}
+                        className={`flex items-center gap-2 ${isRecording ? 'bg-red-100 border-red-300' : ''}`}
+                      >
+                        <Mic className={`w-4 h-4 ${isRecording ? 'text-red-500 animate-pulse' : ''}`} />
+                        {isRecording ? "Stop Recording" : hasVoiceResponse ? "Re-record" : "Add Voice"}
+                      </Button>
+                      
+                      <input
+                        type="file"
+                        ref={imageInputRef}
+                        onChange={handleImageUpload}
+                        accept="image/*"
+                        className="hidden"
+                      />
+                    </div>
+
+                    {/* Media Preview */}
+                    {responseImage && (
+                      <div className="relative">
+                        <img 
+                          src={responseImage} 
+                          alt="Response preview" 
+                          className="max-w-full h-32 object-cover rounded-md"
+                        />
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          className="absolute top-2 right-2 h-6 w-6 p-0"
+                          onClick={handleRemoveImage}
+                        >
+                          <X className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    )}
+
+                    {hasVoiceResponse && (
+                      <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-md">
+                        <div className="flex items-center gap-2">
+                          <VolumeX className="w-4 h-4 text-green-600" />
+                          <span className="text-sm text-green-700">Voice message recorded</span>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={handleRemoveVoice}
+                          className="h-6 w-6 p-0 text-green-600 hover:text-red-600"
+                        >
+                          <X className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    )}
+                    
+                    {/* Text Response */}
                     <div className="flex-1">
                       <Textarea
                         placeholder="Type your response here..."
                         value={response}
                         onChange={(e) => setResponse(e.target.value)}
-                        className="h-full min-h-[150px] resize-none"
+                        className="h-full min-h-[120px] resize-none"
                       />
                     </div>
+                    
                     <Button 
                       onClick={handleSendResponse}
-                      disabled={!response.trim()}
+                      disabled={!response.trim() && !responseImage && !hasVoiceResponse}
                       className="agricultural-gradient text-white"
                     >
                       <Send className="w-4 h-4 mr-2" />
