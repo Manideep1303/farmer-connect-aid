@@ -61,6 +61,12 @@ export default {
 					'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
+				},
+				agricultural: {
+					green: 'hsl(var(--agricultural-green))',
+					brown: 'hsl(var(--agricultural-brown))',
+					gold: 'hsl(var(--wheat-gold))',
+					soil: 'hsl(var(--soil-brown))'
 				}
 			},
 			borderRadius: {
